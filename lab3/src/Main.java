@@ -14,32 +14,44 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
+import java.util.ArrayList;
+
 public class Main extends Application {
 
-    // Модель данных
     public static class Table {
         private final DoubleProperty lowerLimit = new SimpleDoubleProperty();
         private final DoubleProperty upperLimit = new SimpleDoubleProperty();
         private final DoubleProperty steps = new SimpleDoubleProperty();
-        private final ObjectProperty<Double> result = new SimpleObjectProperty<>(null);
+        private final ObjectProperty<Double> result = new SimpleObjectProperty<>();
 
-        public Table(String lowerLimit, String upperLimit, String steps) {
-            this.lowerLimit.set(Double.parseDouble(lowerLimit));
-            this.upperLimit.set(Double.parseDouble(upperLimit));
-            this.steps.set(Double.parseDouble(steps));
+        public Table(double lowerLimit, double upperLimit, double steps) {
+            this.lowerLimit.set(lowerLimit);
+            this.upperLimit.set(upperLimit);
+            this.steps.set(steps);
+            this.result.set(null);
+        }
+
+        public Table(double lowerLimit, double upperLimit, double steps, double result) {
+            this.lowerLimit.set(lowerLimit);
+            this.upperLimit.set(upperLimit);
+            this.steps.set(steps);
+            this.result.set(result);
         }
 
         public DoubleProperty lowerLimitProperty() { return lowerLimit; }
         public DoubleProperty upperLimitProperty() { return upperLimit; }
         public DoubleProperty stepsProperty() { return steps; }
         public ObjectProperty<Double> resultProperty() { return result; }
+
+        public double getLowerLimit() { return lowerLimit.get(); }
+        public double getUpperLimit() { return upperLimit.get(); }
+        public double getSteps() { return steps.get(); }
+        public Double getResult() { return result.get(); }
     }
 
     private TableView<Table> table = new TableView<>();
     private ObservableList<Table> items = FXCollections.observableArrayList();
-    private RecIntegral recIntegral;
-    private boolean isLast = false; //Переменная нужна, чтобы не добавлять последнюю запись
-    // которая еще существует в таблице
+    private ArrayList<RecIntegral> recIntegral = new ArrayList<>();
 
     @Override
     public void start(Stage primaryStage) {
@@ -67,14 +79,24 @@ public class Main extends Application {
             try{
                 if (field1.getText().isBlank() || field2.getText().isBlank() || field3.getText().isBlank()) {
                     throw new InputException("Значение не было введено!");
-                } else if (checkRange(field1.getText()) ||
-                    checkRange(field2.getText()) ||
-                    checkRange(field3.getText())) {
-                    throw new InputException("Неверный диапазон данных!");
+                } else if (checkRange(field1.getText())){
+                    throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field1.getText()));
+                } else if (checkRange(field2.getText())){
+                    throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field2.getText()));
+                } else if (Double.parseDouble(field3.getText()) >= 0){
+                    throw new InputException("Шаг не должен быть больше верхнего лимита!\n Вы ввели : ", Double.parseDouble(field3.getText()));
                 } else {
-                    items.add(new Table(field1.getText(), field2.getText(), field3.getText()));
-                    recIntegral = new RecIntegral(new Table(field1.getText(), field2.getText(), field3.getText()));
+                    recIntegral.add(new RecIntegral(Double.parseDouble(field1.getText()),
+                            Double.parseDouble(field2.getText()),
+                            Double.parseDouble(field3.getText())));
+                    items.add(recIntegral.getLast().getTable());
                 }
+            } catch (NumberFormatException exception){
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setTitle("Предупреждение!");
+                alert.setHeaderText(exception.getMessage());
+                alert.setContentText("Входные данные должны быть в числовом формате и в диапазоне от 0.000001 до 1000000");
+                alert.showAndWait();
             } catch (InputException exception){
                 Alert alert = new Alert(Alert.AlertType.INFORMATION);
                 alert.setTitle("Предупреждение!");
@@ -85,25 +107,22 @@ public class Main extends Application {
         });
         btnDel.setOnAction(e -> {
             Table selected = table.getSelectionModel().getSelectedItem();
+            recIntegral.remove(selected);
             items.remove(selected);
-            isLast = true;
         });
         btnCalc.setOnAction(e -> {
-            Table selected = table.getSelectionModel().getSelectedItem();
-            double a = selected.lowerLimit.get();
-            double b = selected.upperLimit.get();
-            double step = selected.steps.get();
-            double res = result(a, b, step);
-            selected.result.set(res);
+            RecIntegral selected = new RecIntegral(table.getSelectionModel().getSelectedItem());
+            int index = recIntegral.indexOf(selected);
+            recIntegral.get(index).result();
+            items.set(index, recIntegral.get(index).getTable());
         });
         btnClear.setOnAction(e -> {
             items.clear();
-            isLast = true;
         });
         btnFill.setOnAction(e -> {
-            if(isLast){
-                items.add(recIntegral.getLastRecords());
-                isLast = false;
+            items.clear();
+            for (RecIntegral r : recIntegral) {
+                items.add(r.getTable());
             }
         });
 
@@ -145,21 +164,6 @@ public class Main extends Application {
         primaryStage.setTitle("Функция: 1/ln(x)");
         primaryStage.setScene(scene);
         primaryStage.show();
-    }
-
-    public double result(double a, double b, double step) {
-        double res = 0;
-        double ai = 0;
-        for (ai = (a + step); ai <= b; ai += step) {
-            res += (((f(a) + f(ai)) / 2) * step);
-            a += step;
-        }
-        res += (((f(ai) + f(b)) / 2) * ((b - a) % step));
-        return res;
-    }
-
-    public double f(double x){
-        return 1/Math.log(x);
     }
 
     private boolean checkRange(String a){
