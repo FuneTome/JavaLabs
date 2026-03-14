@@ -17,7 +17,6 @@ import javafx.stage.Stage;
 import java.util.ArrayList;
 
 public class Main extends Application {
-
     public static class Table {
         private final DoubleProperty lowerLimit = new SimpleDoubleProperty();
         private final DoubleProperty upperLimit = new SimpleDoubleProperty();
