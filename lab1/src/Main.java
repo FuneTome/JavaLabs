@@ -15,8 +15,6 @@ import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
 public class Main extends Application {
-
-    // Модель данных
     public static class Table {
         private final DoubleProperty lowerLimit = new SimpleDoubleProperty();
         private final DoubleProperty upperLimit = new SimpleDoubleProperty();
