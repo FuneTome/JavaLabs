@@ -17,7 +17,6 @@ import javafx.stage.Stage;
 import java.util.ArrayList;
 
 public class Main extends Application {
-
     public static class Table {
         private final DoubleProperty lowerLimit = new SimpleDoubleProperty();
         private final DoubleProperty upperLimit = new SimpleDoubleProperty();
@@ -83,7 +82,7 @@ public class Main extends Application {
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field1.getText()));
                 } else if (checkRange(field2.getText())){
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field2.getText()));
-                } else if (Double.parseDouble(field3.getText()) >= 0){
+                } else if (Double.parseDouble(field3.getText()) >= Double.parseDouble(field2.getText())){
                     throw new InputException("Шаг не должен быть больше верхнего лимита!\n Вы ввели : ", Double.parseDouble(field3.getText()));
                 } else {
                     recIntegral.add(new RecIntegral(Double.parseDouble(field1.getText()),
