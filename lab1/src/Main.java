@@ -9,10 +9,12 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.converter.DoubleStringConverter;
 
 public class Main extends Application {
     public static class Table {
@@ -75,14 +77,34 @@ public class Main extends Application {
         VBox fieldBox = new VBox(10, field1, field2, field3);
         HBox formBox = new HBox(10, labelBox, fieldBox);
 
+        table.setEditable(true);
+
         TableColumn<Table, Double> lowerLimitCol = new TableColumn<>("Нижний предел");
         lowerLimitCol.setCellValueFactory(new PropertyValueFactory<>("lowerLimit"));
+        lowerLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        lowerLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.lowerLimitProperty().set(event.getNewValue());
+            row.resultProperty().set(null);   
+        });
 
         TableColumn<Table, Double> upperLimitCol = new TableColumn<>("Верхний предел");
         upperLimitCol.setCellValueFactory(new PropertyValueFactory<>("upperLimit"));
+        upperLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        upperLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.upperLimitProperty().set(event.getNewValue());
+            row.resultProperty().set(null);
+        });
 
         TableColumn<Table, Double> stepsCol = new TableColumn<>("Шаг интегрирования");
         stepsCol.setCellValueFactory(new PropertyValueFactory<>("steps"));
+        stepsCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        stepsCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.stepsProperty().set(event.getNewValue());
+            row.resultProperty().set(null);
+        });
 
         TableColumn<Table, Double> resultCol = new TableColumn<>("Результат");
         resultCol.setCellValueFactory(new PropertyValueFactory<>("result"));
