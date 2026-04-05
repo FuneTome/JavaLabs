@@ -23,8 +23,8 @@ import javafx.util.converter.DoubleStringConverter;
 import java.io.*;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.DoubleAdder;
 
 public class Main extends Application {
     public static class Table {
@@ -32,7 +32,7 @@ public class Main extends Application {
         private final DoubleProperty upperLimit = new SimpleDoubleProperty();
         private final DoubleProperty steps = new SimpleDoubleProperty();
         private final ObjectProperty<Double> result = new SimpleObjectProperty<>();
-        private RecIntegral recIntegral; // связь с объектом БД
+        private RecIntegral recIntegral;
 
         public Table(double lowerLimit, double upperLimit, double steps) {
             this.lowerLimit.set(lowerLimit);
@@ -62,15 +62,40 @@ public class Main extends Application {
         public RecIntegral getRecIntegral() { return recIntegral; }
     }
 
+    private static class IntegralRunnable implements Runnable {
+        private final double start;
+        private final double end;
+        private final double step;
+        private final DoubleAdder adder;
+        private final RecIntegral integral; // для вызова f(x)
+
+        public IntegralRunnable(double start, double end, double step, DoubleAdder adder, RecIntegral integral) {
+            this.start = start;
+            this.end = end;
+            this.step = step;
+            this.adder = adder;
+            this.integral = integral;
+        }
+
+        @Override
+        public void run() {
+            double sum = 0.0;
+            double x = start;
+            while (x < end) {
+                double next = Math.min(x + step, end);
+                sum += (integral.f(x) + integral.f(next)) / 2.0 * (next - x);
+                x = next;
+            }
+            adder.add(sum);
+        }
+    }
+
     private TableView<Table> tableView = new TableView<>();
     private ObservableList<Table> items = FXCollections.observableArrayList();
-    private ArrayList<RecIntegral> recIntegralList = new ArrayList<>();
+    private ArrayList<RecIntegral> recIntegral = new ArrayList<>();
 
     @Override
     public void start(Stage primaryStage) {
-        DatabaseManager.dropTable();
-        DatabaseManager.createTable();
-
         Button btnAdd = new Button("Добавить");
         Button btnDel = new Button("Удалить");
         Button btnCalc = new Button("Вычислить");
@@ -83,38 +108,43 @@ public class Main extends Application {
         Button btnSaveJson = new Button("Сохранить json");
         Button btnLoadJson = new Button("Загрузить json");
 
-        for (Button btn : new Button[]{btnAdd, btnDel, btnCalc}) btn.setMaxWidth(Double.MAX_VALUE);
+        for (Button btn : new Button[]{btnAdd, btnDel, btnCalc}) { btn.setMaxWidth(Double.MAX_VALUE); }
         for (Button btn : new Button[]{btnClear, btnFill, btnSaveText, btnLoadText, btnSaveBin,
-                btnLoadBin, btnSaveJson, btnLoadJson}) btn.setPrefWidth(107);
+                btnLoadBin, btnSaveJson, btnLoadJson}) {
+            btn.setPrefWidth(107);
+        }
 
         Label label1 = new Label("Нижний предел");
         Label label2 = new Label("Верхний предел");
         Label label3 = new Label("Шаг");
+
         TextField field1 = new TextField();
         TextField field2 = new TextField();
         TextField field3 = new TextField();
 
         btnAdd.setOnAction(e -> {
             try {
-                if (field1.getText().isBlank() || field2.getText().isBlank() || field3.getText().isBlank())
+                if (field1.getText().isBlank() || field2.getText().isBlank() || field3.getText().isBlank()) {
                     throw new InputException("Значение не было введено!");
-                if (checkRange(field1.getText()))
+                }
+                if (checkRange(field1.getText())) {
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field1.getText()));
-                if (checkRange(field2.getText()))
+                }
+                if (checkRange(field2.getText())) {
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field2.getText()));
-                if (Double.parseDouble(field3.getText()) >= Double.parseDouble(field2.getText()))
+                }
+                if (Double.parseDouble(field3.getText()) >= Double.parseDouble(field2.getText())) {
                     throw new InputException("Шаг не должен быть больше верхнего лимита!\n Вы ввели : ", Double.parseDouble(field3.getText()));
+                }
 
                 double low = Double.parseDouble(field1.getText());
                 double up = Double.parseDouble(field2.getText());
                 double st = Double.parseDouble(field3.getText());
 
                 RecIntegral ri = new RecIntegral(low, up, st);
-                DatabaseManager.addRecord(ri); // теперь ri получает id
-                recIntegralList.add(ri);
-
                 Table row = new Table(low, up, st);
                 row.setRecIntegral(ri);
+                recIntegral.add(ri);
                 items.add(row);
             } catch (NumberFormatException ex) {
                 showAlert("Ошибка формата", "Входные данные должны быть числами!\n" + ex.getMessage());
@@ -126,10 +156,7 @@ public class Main extends Application {
             Table selected = tableView.getSelectionModel().getSelectedItem();
             if (selected != null) {
                 RecIntegral ri = selected.getRecIntegral();
-                if (ri != null) {
-                    DatabaseManager.removeRecord(ri);
-                    recIntegralList.remove(ri);
-                }
+                recIntegral.remove(ri);
                 items.remove(selected);
             }
         });
@@ -138,22 +165,52 @@ public class Main extends Application {
             if (selected != null) {
                 RecIntegral ri = selected.getRecIntegral();
                 if (ri != null) {
-                    ri.result();
-                    selected.resultProperty().set(ri.getResult());
-                    DatabaseManager.updateRecord(ri);
+                    double lower = ri.getLowerLimit();
+                    double upper = ri.getUpperLimit();
+                    double step = ri.getStep();
+                    int numberOfThreads = 7;
+
+                    double totalLength = upper - lower;
+                    double partLength = totalLength / numberOfThreads;
+
+                    DoubleAdder partialSum = new DoubleAdder();
+                    Thread[] threads = new Thread[numberOfThreads];
+
+                    for (int i = 0; i < numberOfThreads; i++) {
+                        double partStart = lower + i * partLength;
+                        double partEnd = lower + (i + 1) * partLength;
+                        if (i == numberOfThreads - 1) partEnd = upper;
+
+                        Runnable task = new IntegralRunnable(partStart, partEnd, step, partialSum, ri);
+                        threads[i] = new Thread(task);
+                        threads[i].start();
+                    }
+
+                    for (Thread t : threads) {
+                        try {
+                            t.join();
+                        } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            throw new RuntimeException(ex);
+                        }
+                    }
+
+                    double total = partialSum.sum();
+                    ri.setResult(total);
+                    selected.resultProperty().set(total);
                     tableView.refresh();
                 }
             }
         });
-        btnClear.setOnAction(e -> items.clear());
+        btnClear.setOnAction(e -> {
+            items.clear();
+            recIntegral.clear();
+        });
         btnFill.setOnAction(e -> {
             items.clear();
-            recIntegralList.clear();
-            List<RecIntegral> list = DatabaseManager.getAllRecords();
-            for (RecIntegral ri : list) {
+            for (RecIntegral ri : recIntegral) {
                 Table row = new Table(ri.getLowerLimit(), ri.getUpperLimit(), ri.getStep(), ri.getResult());
                 row.setRecIntegral(ri);
-                recIntegralList.add(ri);
                 items.add(row);
             }
         });
@@ -165,7 +222,7 @@ public class Main extends Application {
             File file = fc.showSaveDialog(primaryStage);
             if (file != null) {
                 try (PrintWriter pw = new PrintWriter(file)) {
-                    for (RecIntegral ri : recIntegralList) {
+                    for (RecIntegral ri : recIntegral) {
                         pw.printf(Locale.US, "%f %f %f %f%n",
                                 ri.getLowerLimit(), ri.getUpperLimit(), ri.getStep(), ri.getResult());
                     }
@@ -196,10 +253,9 @@ public class Main extends Application {
                                 double res = Double.parseDouble(parts[3]);
                                 RecIntegral ri = new RecIntegral(low, up, step);
                                 ri.setResult(res);
-                                DatabaseManager.addRecord(ri); // сохраняем в БД, получаем id
                                 Table row = new Table(low, up, step, res);
                                 row.setRecIntegral(ri);
-                                recIntegralList.add(ri);
+                                recIntegral.add(ri);
                                 items.add(row);
                             } catch (NumberFormatException ignored) { }
                         }
@@ -218,7 +274,7 @@ public class Main extends Application {
             File file = fc.showSaveDialog(primaryStage);
             if (file != null) {
                 try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(file))) {
-                    oos.writeObject(recIntegralList);
+                    oos.writeObject(recIntegral);
                     showAlert("Успех", "Бинарный файл сохранён");
                 } catch (IOException ex) {
                     showAlert("Ошибка", "Не удалось сохранить\n" + ex.getMessage());
@@ -235,10 +291,9 @@ public class Main extends Application {
                 try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
                     ArrayList<RecIntegral> loaded = (ArrayList<RecIntegral>) ois.readObject();
                     for (RecIntegral ri : loaded) {
-                        DatabaseManager.addRecord(ri); // сохраняем в БД, получаем id
                         Table row = new Table(ri.getLowerLimit(), ri.getUpperLimit(), ri.getStep(), ri.getResult());
                         row.setRecIntegral(ri);
-                        recIntegralList.add(ri);
+                        recIntegral.add(ri);
                         items.add(row);
                     }
                     showAlert("Успех", "Загружено записей: " + loaded.size());
@@ -256,7 +311,7 @@ public class Main extends Application {
             if (file != null) {
                 try (Writer writer = new FileWriter(file)) {
                     Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                    gson.toJson(recIntegralList, writer);
+                    gson.toJson(recIntegral, writer);
                     showAlert("Успех", "JSON сохранён");
                 } catch (IOException ex) {
                     showAlert("Ошибка", "Не удалось сохранить\n" + ex.getMessage());
@@ -275,10 +330,9 @@ public class Main extends Application {
                     Type type = new TypeToken<ArrayList<RecIntegral>>(){}.getType();
                     ArrayList<RecIntegral> loaded = gson.fromJson(reader, type);
                     for (RecIntegral ri : loaded) {
-                        DatabaseManager.addRecord(ri);
                         Table row = new Table(ri.getLowerLimit(), ri.getUpperLimit(), ri.getStep(), ri.getResult());
                         row.setRecIntegral(ri);
-                        recIntegralList.add(ri);
+                        recIntegral.add(ri);
                         items.add(row);
                     }
                     showAlert("Успех", "Загружено записей: " + loaded.size());
@@ -309,14 +363,13 @@ public class Main extends Application {
             Table row = event.getRowValue();
             double newVal = event.getNewValue();
             double currentUpper = row.getUpperLimit();
-            if (isValidLowerLimit(newVal, currentUpper)) {
+            if (newVal > 0 && Math.abs(newVal) >= 0.000001 && Math.abs(newVal) <= 1000000 && newVal < currentUpper) {
                 row.lowerLimitProperty().set(newVal);
                 RecIntegral ri = row.getRecIntegral();
                 if (ri != null) {
                     ri.setLowerLimit(newVal);
                     ri.setResult(0.0);
                     row.resultProperty().set(null);
-                    DatabaseManager.updateRecord(ri);
                 }
             } else {
                 showAlert("Ошибка ввода", "Недопустимое значение нижнего предела.\n" +
@@ -334,14 +387,13 @@ public class Main extends Application {
             double newVal = event.getNewValue();
             double currentLower = row.getLowerLimit();
             double currentStep = row.getSteps();
-            if (isValidUpperLimit(newVal, currentLower, currentStep)) {
+            if (newVal > 0 && Math.abs(newVal) >= 0.000001 && Math.abs(newVal) <= 1000000 && newVal > currentLower && currentStep < newVal) {
                 row.upperLimitProperty().set(newVal);
                 RecIntegral ri = row.getRecIntegral();
                 if (ri != null) {
                     ri.setUpperLimit(newVal);
                     ri.setResult(0.0);
                     row.resultProperty().set(null);
-                    DatabaseManager.updateRecord(ri);
                 }
             } else {
                 showAlert("Ошибка ввода", "Недопустимое значение верхнего предела.\n" +
@@ -359,14 +411,13 @@ public class Main extends Application {
             Table row = event.getRowValue();
             double newVal = event.getNewValue();
             double currentUpper = row.getUpperLimit();
-            if (isValidStep(newVal, currentUpper)) {
+            if (newVal > 0 && Math.abs(newVal) >= 0.000001 && Math.abs(newVal) <= 1000000 && newVal < currentUpper) {
                 row.stepsProperty().set(newVal);
                 RecIntegral ri = row.getRecIntegral();
                 if (ri != null) {
                     ri.setStep(newVal);
                     ri.setResult(0.0);
                     row.resultProperty().set(null);
-                    DatabaseManager.updateRecord(ri);
                 }
             } else {
                 showAlert("Ошибка ввода", "Недопустимое значение шага.\n" +
@@ -398,22 +449,6 @@ public class Main extends Application {
         primaryStage.setTitle("Функция: 1/ln(x)");
         primaryStage.setScene(scene);
         primaryStage.show();
-    }
-
-    // Вспомогательные методы валидации
-    private boolean isValidLowerLimit(double value, double upperLimit) {
-        double absVal = Math.abs(value);
-        return value > 0 && absVal >= 0.000001 && absVal <= 1000000 && value < upperLimit;
-    }
-
-    private boolean isValidUpperLimit(double value, double lowerLimit, double step) {
-        double absVal = Math.abs(value);
-        return value > 0 && absVal >= 0.000001 && absVal <= 1000000 && value > lowerLimit && step < value;
-    }
-
-    private boolean isValidStep(double value, double upperLimit) {
-        double absVal = Math.abs(value);
-        return value > 0 && absVal >= 0.000001 && absVal <= 1000000 && value < upperLimit;
     }
 
     private boolean checkRange(String a) {

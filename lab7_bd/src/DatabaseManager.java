@@ -5,7 +5,7 @@ import java.util.List;
 public class DatabaseManager {
     private static final String DB_URL = "jdbc:postgresql://localhost:5432/integrals";
     private static final String DB_USER = "postgres";
-    private static final String DB_PASSWORD = "1"; // измените под свой пароль
+    private static final String DB_PASSWORD = "1";
 
     private static Connection getConnection() throws SQLException {
         return DriverManager.getConnection(DB_URL, DB_USER, DB_PASSWORD);
@@ -18,8 +18,7 @@ public class DatabaseManager {
                 "upper_limit NUMERIC NOT NULL," +
                 "step NUMERIC NOT NULL," +
                 "result NUMERIC)";
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         } catch (SQLException e) {
             e.printStackTrace();
@@ -28,67 +27,72 @@ public class DatabaseManager {
 
     public static void dropTable() {
         String sql = "DROP TABLE IF EXISTS integrals";
-        try (Connection conn = getConnection();
-             Statement stmt = conn.createStatement()) {
+        try (Connection conn = getConnection(); Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
 
-    public static void addRecord(RecIntegral recIntegral) {
-        String sql = "INSERT INTO integrals (lower_limit, upper_limit, step, result) VALUES (?, ?, ?, ?)";
+    public static int addRecord(RecIntegral recIntegral) {
+        String sql = "INSERT INTO integrals (lower_limit, upper_limit, step, result) VALUES (?, ?, ?, ?) RETURNING id";
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setDouble(1, recIntegral.getLowerLimit());
             pstmt.setDouble(2, recIntegral.getUpperLimit());
             pstmt.setDouble(3, recIntegral.getStep());
             pstmt.setDouble(4, recIntegral.getResult());
-
-            int rowsAffected = pstmt.executeUpdate();
-            System.out.println("Добавлено строк: " + rowsAffected);
-    } catch (SQLException e) {
-        e.printStackTrace();}
-    }
-
-    public static RecIntegral getLastRecords(){
-        String sql = "SELECT * FROM integrals ORDER BY id DESC LIMIT 1;";
-        try (Connection conn = getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql);
-            ResultSet rs = pstmt.executeQuery()) {
+            ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
-                double lower = rs.getDouble("lower_limit");
-                double upper = rs.getDouble("upper_limit");
-                double step = rs.getDouble("step");
-                double result = rs.getDouble("result");
-                return new RecIntegral(lower, upper, step, result);
-            } else {
-                return null; // таблица пуста
+                int id = rs.getInt(1);
+                recIntegral.setId(id);
+                return id;
             }
         } catch (SQLException e) {
             e.printStackTrace();
-            return null;
         }
+        return -1;
     }
 
-    public static List<RecIntegral> getRecords(){
+    public static RecIntegral getLastRecord() {
+        String sql = "SELECT * FROM integrals ORDER BY id DESC LIMIT 1";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql);
+             ResultSet rs = pstmt.executeQuery()) {
+            if (rs.next()) {
+                return new RecIntegral(
+                        rs.getInt("id"),
+                        rs.getDouble("lower_limit"),
+                        rs.getDouble("upper_limit"),
+                        rs.getDouble("step"),
+                        rs.getDouble("result")
+                );
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public static List<RecIntegral> getAllRecords() {
         String sql = "SELECT * FROM integrals";
         List<RecIntegral> list = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql);
              ResultSet rs = pstmt.executeQuery()) {
             while (rs.next()) {
-                double lower = rs.getDouble("lower_limit");
-                double upper = rs.getDouble("upper_limit");
-                double step = rs.getDouble("step");
-                double result = rs.getDouble("result");
-                list.add(new RecIntegral(lower, upper, step, result));
+                list.add(new RecIntegral(
+                        rs.getInt("id"),
+                        rs.getDouble("lower_limit"),
+                        rs.getDouble("upper_limit"),
+                        rs.getDouble("step"),
+                        rs.getDouble("result")
+                ));
             }
-            return list;
         } catch (SQLException e) {
             e.printStackTrace();
-            return null;
         }
+        return list;
     }
 
     public static void updateRecord(RecIntegral recIntegral) {
@@ -99,9 +103,8 @@ public class DatabaseManager {
             pstmt.setDouble(2, recIntegral.getUpperLimit());
             pstmt.setDouble(3, recIntegral.getStep());
             pstmt.setDouble(4, recIntegral.getResult());
-            pstmt.setInt(5, recIntegral.getId()); // используем id из объекта
-            int rowsAffected = pstmt.executeUpdate();
-            System.out.println("Обновлено строк: " + rowsAffected);
+            pstmt.setInt(5, recIntegral.getId());
+            pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -112,8 +115,7 @@ public class DatabaseManager {
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setInt(1, recIntegral.getId());
-            int rowsAffected = pstmt.executeUpdate();
-            System.out.println("Удалено строк: " + rowsAffected);
+            pstmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
