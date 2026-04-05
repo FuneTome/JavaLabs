@@ -171,7 +171,6 @@ public class Main extends Application {
                     throw new RuntimeException(ex);
                 }
             }
-
             double total = partialSum.sum();
             selected.setResult(total);
             items.set(index, selected.getTable());
