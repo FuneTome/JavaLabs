@@ -9,10 +9,12 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.converter.DoubleStringConverter;
 
 import java.util.ArrayList;
 
@@ -75,24 +77,41 @@ public class Main extends Application {
         TextField field3 = new TextField();
 
         btnAdd.setOnAction(e -> {
-            recIntegral.add(new RecIntegral(Double.parseDouble(field1.getText()),
-                     Double.parseDouble(field2.getText()),
-                     Double.parseDouble(field3.getText())));
-            items.add(recIntegral.getLast().getTable());
+            double low = Double.parseDouble(field1.getText());
+            double up = Double.parseDouble(field2.getText());
+            double st = Double.parseDouble(field3.getText());
+            Table t = new Table(low, up, st, 0);
+            RecIntegral rec = new RecIntegral(t);
+            recIntegral.add(rec);
+            items.add(t);
         });
         btnDel.setOnAction(e -> {
             Table selected = table.getSelectionModel().getSelectedItem();
-            recIntegral.remove(selected);
-            items.remove(selected);
+            if (selected != null) {
+                RecIntegral rec = recIntegral.stream()
+                        .filter(r -> r.getTable() == selected)
+                        .findFirst()
+                        .orElse(null);
+                if (rec != null) recIntegral.remove(rec);
+                items.remove(selected);
+            }
         });
         btnCalc.setOnAction(e -> {
-            RecIntegral selected = new RecIntegral(table.getSelectionModel().getSelectedItem());
-            int index = recIntegral.indexOf(selected);
-            recIntegral.get(index).result();
-            items.set(index, recIntegral.get(index).getTable());
+            Table selected = table.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                RecIntegral rec = recIntegral.stream()
+                        .filter(r -> r.getTable() == selected)
+                        .findFirst()
+                        .orElse(null);
+                if (rec != null) {
+                    rec.result();
+                    table.refresh();
+                }
+            }
         });
         btnClear.setOnAction(e -> {
             items.clear();
+            recIntegral.clear();
         });
         btnFill.setOnAction(e -> {
             items.clear();
@@ -108,14 +127,34 @@ public class Main extends Application {
         VBox fieldBox = new VBox(40, field1, field2, field3);
         HBox formBox = new HBox(10, labelBox, fieldBox);
 
+        table.setEditable(true);
+
         TableColumn<Table, Double> lowerLimitCol = new TableColumn<>("Нижний предел");
         lowerLimitCol.setCellValueFactory(new PropertyValueFactory<>("lowerLimit"));
+        lowerLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        lowerLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.lowerLimitProperty().set(event.getNewValue());
+            row.resultProperty().set(null);
+        });
 
         TableColumn<Table, Double> upperLimitCol = new TableColumn<>("Верхний предел");
         upperLimitCol.setCellValueFactory(new PropertyValueFactory<>("upperLimit"));
+        upperLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        upperLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.upperLimitProperty().set(event.getNewValue());
+            row.resultProperty().set(null);
+        });
 
         TableColumn<Table, Double> stepsCol = new TableColumn<>("Шаг интегрирования");
         stepsCol.setCellValueFactory(new PropertyValueFactory<>("steps"));
+        stepsCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        stepsCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            row.stepsProperty().set(event.getNewValue());
+            row.resultProperty().set(null);
+        });
 
         TableColumn<Table, Double> resultCol = new TableColumn<>("Результат");
         resultCol.setCellValueFactory(new PropertyValueFactory<>("result"));
