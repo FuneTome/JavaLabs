@@ -299,6 +299,7 @@ public class Main extends Application {
         VBox labelBox = new VBox(50, label1, label2, label3);
         VBox fieldBox = new VBox(40, field1, field2, field3);
         HBox formBox = new HBox(10, labelBox, fieldBox);
+        
 
         tableView.setEditable(true);
 
