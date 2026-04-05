@@ -9,10 +9,12 @@ import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.control.cell.TextFieldTableCell;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
+import javafx.util.converter.DoubleStringConverter;
 
 import java.util.ArrayList;
 
@@ -75,48 +77,57 @@ public class Main extends Application {
         TextField field3 = new TextField();
 
         btnAdd.setOnAction(e -> {
-            try{
+            try {
                 if (field1.getText().isBlank() || field2.getText().isBlank() || field3.getText().isBlank()) {
                     throw new InputException("Значение не было введено!");
-                } else if (checkRange(field1.getText())){
+                } else if (checkRange(field1.getText())) {
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field1.getText()));
-                } else if (checkRange(field2.getText())){
+                } else if (checkRange(field2.getText())) {
                     throw new InputException("Неверный диапазон данных!\n Вы ввели : ", Double.parseDouble(field2.getText()));
-                } else if (Double.parseDouble(field3.getText()) >= Double.parseDouble(field2.getText())){
+                } else if (Double.parseDouble(field3.getText()) >= Double.parseDouble(field2.getText())) {
                     throw new InputException("Шаг не должен быть больше верхнего лимита!\n Вы ввели : ", Double.parseDouble(field3.getText()));
                 } else {
-                    recIntegral.add(new RecIntegral(Double.parseDouble(field1.getText()),
-                            Double.parseDouble(field2.getText()),
-                            Double.parseDouble(field3.getText())));
-                    items.add(recIntegral.getLast().getTable());
+                    double low = Double.parseDouble(field1.getText());
+                    double up = Double.parseDouble(field2.getText());
+                    double st = Double.parseDouble(field3.getText());
+                    Table t = new Table(low, up, st);
+                    RecIntegral rec = new RecIntegral(t);
+                    recIntegral.add(rec);
+                    items.add(t);
                 }
-            } catch (NumberFormatException exception){
-                Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle("Предупреждение!");
-                alert.setHeaderText(exception.getMessage());
-                alert.setContentText("Входные данные должны быть в числовом формате и в диапазоне от 0.000001 до 1000000");
-                alert.showAndWait();
-            } catch (InputException exception){
-                Alert alert = new Alert(Alert.AlertType.INFORMATION);
-                alert.setTitle("Предупреждение!");
-                alert.setHeaderText(exception.getMessage());
-                alert.setContentText("Входные данные должны быть в диапазоне от 0.000001 до 1000000");
-                alert.showAndWait();
+            } catch (NumberFormatException exception) {
+                showAlert("Входные данные должны быть в числовом формате и в диапазоне от 0.000001 до 1000000");
+            } catch (InputException exception) {
+                showAlert(exception.getMessage() + "\nВходные данные должны быть в диапазоне от 0.000001 до 1000000");
             }
         });
         btnDel.setOnAction(e -> {
             Table selected = table.getSelectionModel().getSelectedItem();
-            recIntegral.remove(selected);
-            items.remove(selected);
+            if (selected != null) {
+                RecIntegral rec = recIntegral.stream()
+                        .filter(r -> r.getTable() == selected)
+                        .findFirst()
+                        .orElse(null);
+                if (rec != null) recIntegral.remove(rec);
+                items.remove(selected);
+            }
         });
         btnCalc.setOnAction(e -> {
-            RecIntegral selected = new RecIntegral(table.getSelectionModel().getSelectedItem());
-            int index = recIntegral.indexOf(selected);
-            recIntegral.get(index).result();
-            items.set(index, recIntegral.get(index).getTable());
+            Table selected = table.getSelectionModel().getSelectedItem();
+            if (selected != null) {
+                RecIntegral rec = recIntegral.stream()
+                        .filter(r -> r.getTable() == selected)
+                        .findFirst()
+                        .orElse(null);
+                if (rec != null) {
+                    rec.result();
+                    table.refresh();
+                }
+            }
         });
         btnClear.setOnAction(e -> {
             items.clear();
+            recIntegral.clear();
         });
         btnFill.setOnAction(e -> {
             items.clear();
@@ -132,14 +143,56 @@ public class Main extends Application {
         VBox fieldBox = new VBox(40, field1, field2, field3);
         HBox formBox = new HBox(10, labelBox, fieldBox);
 
+        table.setEditable(true);
+
         TableColumn<Table, Double> lowerLimitCol = new TableColumn<>("Нижний предел");
         lowerLimitCol.setCellValueFactory(new PropertyValueFactory<>("lowerLimit"));
+        lowerLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        lowerLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            double newVal = event.getNewValue();
+            double upper = row.getUpperLimit();
+            if (isValidLowerLimit(newVal, upper)) {
+                row.lowerLimitProperty().set(newVal);
+                row.resultProperty().set(null);
+            } else {
+                showAlert("Недопустимое значение нижнего предела.\nДопустимый диапазон: 0.000001 ... 1000000\nНижний предел должен быть меньше верхнего.");
+                table.refresh();
+            }
+        });
 
         TableColumn<Table, Double> upperLimitCol = new TableColumn<>("Верхний предел");
         upperLimitCol.setCellValueFactory(new PropertyValueFactory<>("upperLimit"));
+        upperLimitCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        upperLimitCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            double newVal = event.getNewValue();
+            double lower = row.getLowerLimit();
+            double step = row.getSteps();
+            if (isValidUpperLimit(newVal, lower, step)) {
+                row.upperLimitProperty().set(newVal);
+                row.resultProperty().set(null);
+            } else {
+                showAlert("Недопустимое значение верхнего предела.\nДопустимый диапазон: 0.000001 ... 1000000\nВерхний предел должен быть больше нижнего и больше шага.");
+                table.refresh();
+            }
+        });
 
         TableColumn<Table, Double> stepsCol = new TableColumn<>("Шаг интегрирования");
         stepsCol.setCellValueFactory(new PropertyValueFactory<>("steps"));
+        stepsCol.setCellFactory(TextFieldTableCell.forTableColumn(new DoubleStringConverter()));
+        stepsCol.setOnEditCommit(event -> {
+            Table row = event.getRowValue();
+            double newVal = event.getNewValue();
+            double upper = row.getUpperLimit();
+            if (isValidStep(newVal, upper)) {
+                row.stepsProperty().set(newVal);
+                row.resultProperty().set(null);
+            } else {
+                showAlert("Недопустимое значение шага.\nШаг должен быть положительным, в диапазоне 0.000001 ... 1000000 и меньше верхнего предела.");
+                table.refresh();
+            }
+        });
 
         TableColumn<Table, Double> resultCol = new TableColumn<>("Результат");
         resultCol.setCellValueFactory(new PropertyValueFactory<>("result"));
@@ -165,9 +218,32 @@ public class Main extends Application {
         primaryStage.show();
     }
 
-    private boolean checkRange(String a){
+    private boolean isValidLowerLimit(double value, double upperLimit) {
+        double absVal = Math.abs(value);
+        return absVal >= 0.000001 && absVal <= 1000000 && value < upperLimit;
+    }
+
+    private boolean isValidUpperLimit(double value, double lowerLimit, double step) {
+        double absVal = Math.abs(value);
+        return absVal >= 0.000001 && absVal <= 1000000 && value > lowerLimit && step < value;
+    }
+
+    private boolean isValidStep(double value, double upperLimit) {
+        double absVal = Math.abs(value);
+        return absVal >= 0.000001 && absVal <= 1000000 && value < upperLimit;
+    }
+
+    private boolean checkRange(String a) {
         double b = Math.abs(Double.parseDouble(a));
         return b < 0.000001 || b > 1000000;
+    }
+
+    private void showAlert(String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Предупреждение!");
+        alert.setHeaderText(null);
+        alert.setContentText(message);
+        alert.showAndWait();
     }
 
     public static void main(String[] args) {

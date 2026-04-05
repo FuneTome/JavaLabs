@@ -1,26 +1,20 @@
 import java.util.Objects;
 
 public class RecIntegral {
-    private double lowerLimit, upperLimit, step, result;
+    private final Main.Table table;
 
-    public RecIntegral(double lowerLimit, double upperLimit, double step) {
-        this.lowerLimit = lowerLimit;
-        this.upperLimit = upperLimit;
-        this.step = step;
-    }
-
-    public RecIntegral(Main.Table o){
-        this.lowerLimit = o.getLowerLimit();
-        this.upperLimit = o.getUpperLimit();
-        this.step = o.getSteps();
-        this.result = o.getResult();
+    public RecIntegral(Main.Table table) {
+        this.table = table;
     }
 
     public Main.Table getTable() {
-        return new Main.Table(lowerLimit, upperLimit, step, result);
+        return table;
     }
 
     public void result() {
+        double lowerLimit = table.getLowerLimit();
+        double upperLimit = table.getUpperLimit();
+        double step = table.getSteps();
         double res = 0;
         double ai = 0;
         double ll = lowerLimit;
@@ -29,18 +23,23 @@ public class RecIntegral {
             ll += step;
         }
         res += (((f(ai) + f(upperLimit)) / 2) * ((upperLimit - lowerLimit) % step));
-        this.result = res;
+        table.resultProperty().set(res);
+    }
+
+    private double f(double x) {
+        return 1 / Math.log(x);
     }
 
     @Override
     public boolean equals(Object o) {
+        if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         RecIntegral that = (RecIntegral) o;
-        return Double.compare(lowerLimit, that.lowerLimit) == 0 && Double.compare(upperLimit, that.upperLimit) == 0 &&
-                Double.compare(step, that.step) == 0 && Double.compare(result, that.result) == 0;
+        return Objects.equals(table, that.table);
     }
 
-    public double f(double x){
-        return 1/Math.log(x);
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(table);
     }
 }
